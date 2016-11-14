@@ -14,7 +14,7 @@ int main()
 {
 	IplImage* img = cvLoadImage("../media/Angry-baby-owl.jpg");
 	//cvNamedWindow("window1", CV_WINDOW_AUTOSIZE);
-	cvShowImage("test2", img);
+	cvShowImage("first sfm", img);
 	cvWaitKey(0);
 	cvReleaseImage(&img);
 	//cvDestroyWindow("window1");
