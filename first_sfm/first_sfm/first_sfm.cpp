@@ -2,7 +2,7 @@
 //
 
 #include "stdafx.h"
-#include "opencv/highgui.h"
+#include <opencv\highgui.h>
 #include <opencv2\xfeatures2d\nonfree.hpp>
 #include <opencv2\features2d\features2d.hpp>
 #include <opencv2\calib3d\calib3d.hpp>
@@ -10,13 +10,18 @@
 #include <iostream>
 #include <vector>
 
-#pragma comment(lib,"opencv_core310d.lib")
-#pragma comment(lib,"opencv_ml310d.lib")
-#pragma comment(lib,"opencv_highgui310d.lib")
-#pragma comment(lib,"opencv_imgcodecs310d.lib")
+#include "util.h"
+#include "viewer_serialization.h"
+
+
 
 using namespace cv;
 using namespace std;
+
+fun_contex g_fun_contex;
+
+#define FUN_TIMER fun_timer_obj obj(__FUNCTION__,&g_fun_contex)
+
 //保存一张图片的数据和特征点信息
 struct image_info
 {
@@ -27,7 +32,7 @@ struct image_info
 	Mat img;
 	std::vector<KeyPoint> key_points;
 	std::vector<Vec3b> colors;
-	std::vector<Mat> descriptors;
+	Mat descriptors;
 };
 
 struct match_res
@@ -39,6 +44,7 @@ struct match_res
 };
 match_res match_feature(image_info * imgs)
 {
+	FUN_TIMER;
 	match_res res;
 	//两幅图片的特征点 进行特征匹配
 	std::vector<std::vector<DMatch>> knn_matches;
@@ -78,12 +84,14 @@ match_res match_feature(image_info * imgs)
 	return res;
 }
 
-void search_feature(image_info * imgs)
+void search_feature(image_info * img_array)
 {
+	FUN_TIMER;
+
 	Ptr<Feature2D> sift = xfeatures2d::SIFT::create(0, 3, 0.04, 10);
 	for (int i = 0; i < 2;++i)
 	{
-		image_info& image = imgs[i];
+		image_info& image = img_array[i];
 		sift->detectAndCompute(image.img, noArray(), image.key_points, image.descriptors);
 
 		//特征点过少，则排除该图像
@@ -110,6 +118,7 @@ struct essMatRes
 };
 essMatRes slovePosRotFromE(const Mat& K, const match_res& mr)
 {
+	FUN_TIMER;
 	essMatRes res(true);
 	//根据内参矩阵获取相机的焦距和光心坐标（主点坐标）
 	double focal_length = 0.5*(K.at<double>(0) + K.at<double>(4));
@@ -139,6 +148,7 @@ essMatRes slovePosRotFromE(const Mat& K, const match_res& mr)
 
 void reconstruct(const Mat& K, const essMatRes& emr, const match_res& mr, Mat& structure)
 {
+	FUN_TIMER;
 	//两个相机的投影矩阵[R T]，triangulatePoints只支持float型
 	Mat proj1(3, 4, CV_32FC1);
 	Mat proj2(3, 4, CV_32FC1);
@@ -162,6 +172,7 @@ void reconstruct(const Mat& K, const essMatRes& emr, const match_res& mr, Mat& s
 //返回剔除掉了多少个点
 int cull_point_by_mask(const essMatRes& emr,match_res& mr)
 {
+	FUN_TIMER;
 	int count = emr.mask.rows; //少写一个else
 	vector<Point2f> left_copy;
 	vector<Point2f> right_copy;
@@ -189,8 +200,12 @@ int cull_point_by_mask(const essMatRes& emr,match_res& mr)
 
 	return count;
 }
+
+
 int main()
 {
+	FUN_TIMER;
+
 	//读取两张图片
 	image_info imgs[] = {
 		image_info("../media/0004.jpg"),
@@ -216,6 +231,13 @@ int main()
 	Mat structure;	//4行N列的矩阵，每一列代表空间中的一个点
 	int cull_count=cull_point_by_mask(ert, mr);
 	reconstruct(K, ert, mr, structure);
+
+	//save to file
+	vector<Mat> rotations = { Mat::eye(3, 3, CV_64FC1), ert.R };
+	vector<Mat> motions = { Mat::zeros(3, 1, CV_64FC1), ert.T };
+	save_structure("structure.yml", rotations, motions, structure, mr.matched_color_left);
+
+	system("pause");
 	return 0;
 }
 
