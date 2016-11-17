@@ -209,7 +209,7 @@ int cull_point_by_mask(const essMatRes& emr,match_res& mr)
 }
 
 
-int first_sfm()
+bool first_sfm()
 {
 	FUN_TIMER;
 
@@ -244,8 +244,8 @@ int first_sfm()
 	vector<Mat> motions = { Mat::zeros(3, 1, CV_64FC1), ert.T };
 	save_structure("structure.yml", rotations, motions, structure, mr.matched_color_left);
 
-	system("pause");
-	return 0;
+	
+	return true;
 }
 // Data
 static LPDIRECT3DDEVICE9        g_pd3dDevice = NULL;
@@ -342,14 +342,33 @@ int main(int, char**)
 			continue;
 		}
 		ImGui_ImplDX9_NewFrame();
+		//bool show_test_window = true;
+		//ImGui::SetNextWindowPos(ImVec2(650, 20), ImGuiSetCond_FirstUseEver);
+		//ImGui::ShowTestWindow(&show_test_window);
+		//ui is here
+		//static bool bExecSFMAll = false;
+		//if (bExecSFMAll)
+		//	first_sfm();
 
-		// 1. Show a simple window
-		// Tip: if we don't call ImGui::Begin()/ImGui::End() the widgets appears in a window automatically called "Debug"
+		bool show_sfm_window = true;
+		if (show_sfm_window)
 		{
-			static float f = 0.0f;
-			ImGui::Text("Hello, world!");
-			ImGui::SliderFloat("float", &f, 0.0f, 1.0f);
-			ImGui::ColorEdit3("clear color", (float*)&clear_col);
+			ImGui::Begin("sfm wnd", &show_sfm_window, ImGuiWindowFlags_MenuBar);
+			{
+				if (ImGui::BeginMenuBar())
+				{
+					if (ImGui::BeginMenu("SFM Steps"))
+					{
+						if(ImGui::MenuItem("ExecAll", NULL))
+							first_sfm();
+						ImGui::EndMenu();
+					}
+					
+					ImGui::EndMenuBar();
+				}
+				ImGui::End(); 
+			}
+
 		}
 
 
