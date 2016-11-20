@@ -172,6 +172,7 @@
     <ClCompile Include="..\..\imgui\imgui_draw.cpp" />
     <ClCompile Include="..\..\imgui\imgui_impl_dx9.cpp" />
     <ClCompile Include="first_sfm.cpp" />
+    <ClCompile Include="main.cpp" />
     <ClCompile Include="stdafx.cpp" />
     <ClCompile Include="util.cpp" />
     <ClCompile Include="viewer_serialization.cpp" />

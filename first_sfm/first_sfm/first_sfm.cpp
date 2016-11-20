@@ -1,12 +1,6 @@
 // first_sfm.cpp : 定义控制台应用程序的入口点。
 //
 
-#include "stdafx.h"
-#include <imgui.h>
-#include "imgui_impl_dx9.h"
-#include <d3d9.h>
-#define DIRECTINPUT_VERSION 0x0800
-#include <dinput.h>
 
 
 #include <opencv\highgui.h>
@@ -19,7 +13,7 @@
 
 #include "util.h"
 #include "viewer_serialization.h"
-
+#include <windows.h>
 
 
 using namespace cv;
@@ -48,7 +42,22 @@ struct match_res
 	vector<Point2f> matched_pos_right;
 	vector<Vec3b> matched_color_left;
 	vector<Vec3b> matched_color_right;
+	std::vector<DMatch> bestMatch; //for debug
 };
+
+struct essMatRes
+{
+	essMatRes(bool b)
+	{
+		bOk = b;
+	}
+	bool bOk;	// 本结构是否合法
+	Mat R;		// 相机的旋转
+	Mat T;		// 相机的位移
+	Mat mask;	// mask中大于零的点代表匹配点，等于零代表失配点
+};
+
+
 match_res match_feature(image_info * imgs)
 {
 	FUN_TIMER;
@@ -72,9 +81,13 @@ match_res match_feature(image_info * imgs)
 
 	for (size_t r = 0; r < knn_matches.size(); ++r)
 	{
+		const cv::DMatch& bestMatch = knn_matches[r][0];
+		const cv::DMatch& betterMatch = knn_matches[r][1];
+		float distanceRatio = bestMatch.distance / betterMatch.distance;
+
 		//排除不满足Ratio Test的点和匹配距离过大的点
 		if (
-			knn_matches[r][0].distance > 0.6*knn_matches[r][1].distance ||
+			distanceRatio > 0.6f ||
 			knn_matches[r][0].distance > 5 * max(min_dist, 10.0f)
 			)
 			continue;
@@ -87,6 +100,8 @@ match_res match_feature(image_info * imgs)
 		
 		res.matched_pos_right.push_back(imgs[1].key_points[idxR].pt);
 		res.matched_color_right.push_back(imgs[1].colors[idxR]);
+
+		res.bestMatch.push_back(bestMatch);
 	}
 	return res;
 }
@@ -112,17 +127,7 @@ void search_feature(image_info * img_array)
 		}
 	}
 }
-struct essMatRes
-{
-	essMatRes(bool b)
-	{
-		bOk = b;
-	}
-	bool bOk;	// 本结构是否合法
-	Mat R;		// 相机的旋转
-	Mat T;		// 相机的位移
-	Mat mask;	// mask中大于零的点代表匹配点，等于零代表失配点
-};
+
 essMatRes slovePosRotFromE(const Mat& K, const match_res& mr)
 {
 	FUN_TIMER;
@@ -208,6 +213,32 @@ int cull_point_by_mask(const essMatRes& emr,match_res& mr)
 	return count;
 }
 
+// Draw matches between two images
+cv::Mat genMatchesImage(cv::Mat query, cv::Mat pattern, const std::vector<cv::KeyPoint>& queryKp, const std::vector<cv::KeyPoint>& trainKp, std::vector<cv::DMatch> matches, int maxMatchesDrawn)
+{
+	cv::Mat outImg;
+
+	if (matches.size() > maxMatchesDrawn)
+	{
+		matches.resize(maxMatchesDrawn);
+	}
+
+	cv::drawMatches
+		(
+			query,
+			queryKp,
+			pattern,
+			trainKp,
+			matches,
+			outImg,
+			cv::Scalar(0, 200, 0, 255),
+			cv::Scalar::all(-1),
+			std::vector<char>(),
+			cv::DrawMatchesFlags::DEFAULT
+			);
+
+	return outImg;
+}
 
 bool first_sfm()
 {
@@ -215,8 +246,8 @@ bool first_sfm()
 
 	//读取两张图片
 	image_info imgs[] = {
-		image_info("../media/0004.jpg"),
-		image_info("../media/0006.jpg")
+		image_info("../media/0004s.jpg"),
+		image_info("../media/0006s.jpg")
 	};
 	
 	//camera的内部矩阵
@@ -230,6 +261,15 @@ bool first_sfm()
 
 	//匹配两个图片的特征点
 	match_res mr=match_feature(imgs);
+	//draw debug
+	cv::Mat debugImg=genMatchesImage(imgs[0].img, imgs[1].img,
+		imgs[0].key_points, imgs[1].key_points,
+		mr.bestMatch, 500);
+	cv::imshow("match result debug view", debugImg);
+	//int desktopw = GetSystemMetrics(SM_CXSCREEN);
+	//int desktoph = GetSystemMetrics(SM_CYSCREEN);
+	//cv::resizeWindow("match result debug view", desktopw, desktoph);
+
 
 	//根据匹配的特征点 求本质矩阵E以及相机的R和T
 	essMatRes ert = slovePosRotFromE(K, mr);
@@ -246,150 +286,4 @@ bool first_sfm()
 
 	
 	return true;
-}
-// Data
-static LPDIRECT3DDEVICE9        g_pd3dDevice = NULL;
-static D3DPRESENT_PARAMETERS    g_d3dpp;
-
-extern LRESULT ImGui_ImplDX9_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
-{
-	if (ImGui_ImplDX9_WndProcHandler(hWnd, msg, wParam, lParam))
-		return true;
-
-	switch (msg)
-	{
-	case WM_SIZE:
-		if (g_pd3dDevice != NULL && wParam != SIZE_MINIMIZED)
-		{
-			ImGui_ImplDX9_InvalidateDeviceObjects();
-			g_d3dpp.BackBufferWidth = LOWORD(lParam);
-			g_d3dpp.BackBufferHeight = HIWORD(lParam);
-			HRESULT hr = g_pd3dDevice->Reset(&g_d3dpp);
-			if (hr == D3DERR_INVALIDCALL)
-				IM_ASSERT(0);
-			ImGui_ImplDX9_CreateDeviceObjects();
-		}
-		return 0;
-	case WM_SYSCOMMAND:
-		if ((wParam & 0xfff0) == SC_KEYMENU) // Disable ALT application menu
-			return 0;
-		break;
-	case WM_DESTROY:
-		PostQuitMessage(0);
-		return 0;
-	}
-	return DefWindowProc(hWnd, msg, wParam, lParam);
-}
-
-int main(int, char**)
-{
-	auto wndClassName = _T("first_sfm");
-	// Create application window
-	WNDCLASSEX wc = { sizeof(WNDCLASSEX), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(NULL), NULL, LoadCursor(NULL, IDC_ARROW), NULL, NULL, wndClassName, NULL };
-	RegisterClassEx(&wc);
-	HWND hwnd = CreateWindow(wndClassName, _T("first stucture from motion demo"), WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, NULL, NULL, wc.hInstance, NULL);
-
-	// Initialize Direct3D
-	LPDIRECT3D9 pD3D;
-	if ((pD3D = Direct3DCreate9(D3D_SDK_VERSION)) == NULL)
-	{
-		UnregisterClass(wndClassName, wc.hInstance);
-		return 0;
-	}
-	ZeroMemory(&g_d3dpp, sizeof(g_d3dpp));
-	g_d3dpp.Windowed = TRUE;
-	g_d3dpp.SwapEffect = D3DSWAPEFFECT_DISCARD;
-	g_d3dpp.BackBufferFormat = D3DFMT_UNKNOWN;
-	g_d3dpp.EnableAutoDepthStencil = TRUE;
-	g_d3dpp.AutoDepthStencilFormat = D3DFMT_D16;
-	g_d3dpp.PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
-
-	// Create the D3DDevice
-	if (pD3D->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hwnd, D3DCREATE_HARDWARE_VERTEXPROCESSING, &g_d3dpp, &g_pd3dDevice) < 0)
-	{
-		pD3D->Release();
-		UnregisterClass(wndClassName, wc.hInstance);
-		return 0;
-	}
-
-	// Setup ImGui binding
-	ImGui_ImplDX9_Init(hwnd, g_pd3dDevice);
-
-	// Load Fonts
-	// (there is a default font, this is only if you want to change it. see extra_fonts/README.txt for more details)
-	//ImGuiIO& io = ImGui::GetIO();
-	//io.Fonts->AddFontDefault();
-	//io.Fonts->AddFontFromFileTTF("../../extra_fonts/Cousine-Regular.ttf", 15.0f);
-	//io.Fonts->AddFontFromFileTTF("../../extra_fonts/DroidSans.ttf", 16.0f);
-	//io.Fonts->AddFontFromFileTTF("../../extra_fonts/ProggyClean.ttf", 13.0f);
-	//io.Fonts->AddFontFromFileTTF("../../extra_fonts/ProggyTiny.ttf", 10.0f);
-	//io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf", 18.0f, NULL, io.Fonts->GetGlyphRangesJapanese());
-
-	ImVec4 clear_col = ImColor(114, 144, 154);
-
-	// Main loop
-	MSG msg;
-	ZeroMemory(&msg, sizeof(msg));
-	ShowWindow(hwnd, SW_SHOWDEFAULT);
-	UpdateWindow(hwnd);
-	while (msg.message != WM_QUIT)
-	{
-		if (PeekMessage(&msg, NULL, 0U, 0U, PM_REMOVE))
-		{
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
-			continue;
-		}
-		ImGui_ImplDX9_NewFrame();
-		//bool show_test_window = true;
-		//ImGui::SetNextWindowPos(ImVec2(650, 20), ImGuiSetCond_FirstUseEver);
-		//ImGui::ShowTestWindow(&show_test_window);
-		//ui is here
-		//static bool bExecSFMAll = false;
-		//if (bExecSFMAll)
-		//	first_sfm();
-
-		bool show_sfm_window = true;
-		if (show_sfm_window)
-		{
-			ImGui::Begin("sfm wnd", &show_sfm_window, ImGuiWindowFlags_MenuBar);
-			{
-				if (ImGui::BeginMenuBar())
-				{
-					if (ImGui::BeginMenu("SFM Steps"))
-					{
-						if(ImGui::MenuItem("ExecAll", NULL))
-							first_sfm();
-						ImGui::EndMenu();
-					}
-					
-					ImGui::EndMenuBar();
-				}
-				ImGui::End(); 
-			}
-
-		}
-
-
-		// Rendering
-		g_pd3dDevice->SetRenderState(D3DRS_ZENABLE, false);
-		g_pd3dDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, false);
-		g_pd3dDevice->SetRenderState(D3DRS_SCISSORTESTENABLE, false);
-		D3DCOLOR clear_col_dx = D3DCOLOR_RGBA((int)(clear_col.x*255.0f), (int)(clear_col.y*255.0f), (int)(clear_col.z*255.0f), (int)(clear_col.w*255.0f));
-		g_pd3dDevice->Clear(0, NULL, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, clear_col_dx, 1.0f, 0);
-		if (g_pd3dDevice->BeginScene() >= 0)
-		{
-			ImGui::Render();
-			g_pd3dDevice->EndScene();
-		}
-		g_pd3dDevice->Present(NULL, NULL, NULL, NULL);
-	}
-
-	ImGui_ImplDX9_Shutdown();
-	if (g_pd3dDevice) g_pd3dDevice->Release();
-	if (pD3D) pD3D->Release();
-	UnregisterClass(wndClassName, wc.hInstance);
-
-	return 0;
 }
