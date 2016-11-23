@@ -7,6 +7,8 @@
 #include <opencv2\xfeatures2d\nonfree.hpp>
 #include <opencv2\features2d\features2d.hpp>
 #include "opencv2/core/core.hpp"  
+#include <opencv2/imgproc/imgproc.hpp>
+
 //#include "opencv2/nonfree/features2d.hpp"
 #include <opencv2\calib3d\calib3d.hpp>
 #include <opencv2\imgcodecs.hpp>
@@ -136,7 +138,7 @@ void test_bruteforce_knn_matcher(const match_input& input)
 
 	//获取满足Ratio Test的最小匹配的距离
 	float min_dist = FLT_MAX;
-	for (int r = 0; r < knn_matches.size(); ++r)
+	for (size_t r = 0; r < knn_matches.size(); ++r)
 	{
 		//Ratio Test
 		if (knn_matches[r][0].distance > 0.6*knn_matches[r][1].distance)
@@ -169,6 +171,15 @@ void test_bruteforce_knn_matcher(const match_input& input)
 	sprintf_s(buff, 256, "BF knn Match,matched keypoint num=%d", match_res.size());
 	drawTextLine(out_img, buff, cv::Point(10, -30), cv::Scalar(255, 255, 255));
 	imshow("bf knn match", out_img);
+
+}
+
+void test_opticalflow(const match_input& input)
+{
+	//detect keypoints for all images
+	Ptr<FastFeatureDetector> ffd = FastFeatureDetector::create();
+	std::vector<std::vector<cv::KeyPoint> > opf_kps;
+	ffd->detect(*(input.image0), opf_kps);
 
 }
 int main()
