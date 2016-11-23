@@ -67,47 +67,129 @@ Rect drawButton(Mat img, const char* text, cv::Point coord, int minWidth = 0)
 }
 
 
-void test_surf_dect(const char* name,Mat& img0)
+struct feature_res
+{
+	vector<KeyPoint> kps;
+	Mat descriptors;
+};
+struct match_input
+{
+	Mat* image0;
+	Mat* image1;
+	feature_res* img_kp0;
+	feature_res* img_kp1;
+};
+void test_surf_dect(const char* name,Mat& img0, feature_res& res)
 {
 	int minHessian = 400;
 	Ptr<Feature2D> surf = xfeatures2d::SURF::create(minHessian);
-	vector<KeyPoint> kps;
-	Mat descriptors;
-	surf->detectAndCompute(img0, noArray(), kps, descriptors);
+
+
+	surf->detectAndCompute(img0, noArray(), res.kps, res.descriptors);
 	Mat out_img0;
-	cv::drawKeypoints(img0, kps, out_img0);
+	cv::drawKeypoints(img0, res.kps, out_img0);
 	char buff[256];
-	sprintf_s(buff, 256, "SURF,img name=%s,keypoint num=%d",name,kps.size());
+	sprintf_s(buff, 256, "SURF,img name=%s,keypoint num=%d",name, res.kps.size());
 	drawTextLine(out_img0, buff, cv::Point(10, -30), cv::Scalar(255, 255, 255));
 	imshow(name, out_img0);
 
 }
 
-void test_sift_dect(const char* name, Mat& img0)
+void  test_sift_dect(const char* name, Mat& img0, feature_res& res)
 {
 	Ptr<Feature2D> sift = xfeatures2d::SIFT::create(0, 3, 0.04, 10);
-	vector<KeyPoint> kps;
-	Mat descriptors;
-	sift->detectAndCompute(img0, noArray(), kps, descriptors);
+
+	sift->detectAndCompute(img0, noArray(), res.kps, res.descriptors);
 	Mat out_img0;
-	cv::drawKeypoints(img0, kps, out_img0);
+	cv::drawKeypoints(img0, res.kps, out_img0);
 	char buff[256];
-	sprintf_s(buff, 256, "SIFT,img name=%s,keypoint num=%d", name, kps.size());
+	sprintf_s(buff, 256, "SIFT,img name=%s,keypoint num=%d", name, res.kps.size());
 	drawTextLine(out_img0, buff, cv::Point(10, -30), cv::Scalar(255, 255, 255));
 	imshow(name, out_img0);
+
+}
+
+void test_bruteforce_matcher(const match_input& input)
+{
+	vector<DMatch> match_res;
+	BFMatcher matcher(NORM_L2);
+	matcher.match(input.img_kp0->descriptors, input.img_kp1->descriptors, match_res);
+	Mat out_img;
+	cv::drawMatches(
+		*input.image0, input.img_kp0->kps, 
+		*input.image1, input.img_kp1->kps, 
+		match_res, out_img);
+
+	char buff[256];
+	sprintf_s(buff, 256, "BF Match,matched keypoint num=%d", match_res.size());
+	drawTextLine(out_img, buff, cv::Point(10, -30), cv::Scalar(255, 255, 255));
+	imshow("bf match", out_img);
+
+}
+
+void test_bruteforce_knn_matcher(const match_input& input)
+{
+	vector<DMatch> match_res;
+	vector<vector<DMatch>> knn_matches;
+	BFMatcher matcher(NORM_L2);
+	matcher.knnMatch(input.img_kp0->descriptors, input.img_kp1->descriptors, knn_matches, 2);
+
+	//获取满足Ratio Test的最小匹配的距离
+	float min_dist = FLT_MAX;
+	for (int r = 0; r < knn_matches.size(); ++r)
+	{
+		//Ratio Test
+		if (knn_matches[r][0].distance > 0.6*knn_matches[r][1].distance)
+			continue;
+
+		float dist = knn_matches[r][0].distance;
+		if (dist < min_dist) min_dist = dist;
+	}
+
+	for (size_t r = 0; r < knn_matches.size(); ++r)
+	{
+		//排除不满足Ratio Test的点和匹配距离过大的点
+		if (
+			knn_matches[r][0].distance > 0.6*knn_matches[r][1].distance ||
+			knn_matches[r][0].distance > 5 * max(min_dist, 10.0f)
+			)
+			continue;
+
+		//保存匹配点
+		match_res.push_back(knn_matches[r][0]);
+	}
+
+	Mat out_img;
+	cv::drawMatches(
+		*input.image0, input.img_kp0->kps,
+		*input.image1, input.img_kp1->kps,
+		match_res, out_img);
+
+	char buff[256];
+	sprintf_s(buff, 256, "BF knn Match,matched keypoint num=%d", match_res.size());
+	drawTextLine(out_img, buff, cv::Point(10, -30), cv::Scalar(255, 255, 255));
+	imshow("bf knn match", out_img);
 
 }
 int main()
 {
 	Mat img0 = imread("../media/0004s.jpg");
 	Mat img1 = imread("../media/0006s.jpg");
-	test_surf_dect("img0_surf",img0);
-	test_surf_dect("img1_surf",img1);
+	feature_res surf_kp0;
+	test_surf_dect("img0_surf", img0, surf_kp0);
+	feature_res surf_kp1;
+	test_surf_dect("img1_surf", img1, surf_kp1);
 	
-	test_sift_dect("img0_sift", img0);
-	test_sift_dect("img1_sift", img1);
+	//feature_res sift_kp0 = test_sift_dect("img0_sift", img0);
+	//feature_res sift_kp1 = test_sift_dect("img1_sift", img1);
 
-	
+	match_input mipt;
+	mipt.image0 = &img0;
+	mipt.image1 = &img1;
+	mipt.img_kp0 = &surf_kp0;
+	mipt.img_kp1 = &surf_kp1;
+
+	test_bruteforce_knn_matcher(mipt);
 	waitKey(0);
     return 0;
 }
