@@ -14,7 +14,9 @@
 #include <opencv2\imgcodecs.hpp>
 #include <iostream>
 #include <vector>
+#include <set>
 
+#include "util.h"
 using namespace cv;
 using namespace std;
 
@@ -174,13 +176,95 @@ void test_bruteforce_knn_matcher(const match_input& input)
 
 }
 
-void test_opticalflow(const match_input& input)
+void test_opticalflow_detect_match(Mat& img0, Mat& img1)
 {
+	vector<DMatch> matchesRes;
+
 	//detect keypoints for all images
 	Ptr<FastFeatureDetector> ffd = FastFeatureDetector::create();
-	std::vector<std::vector<cv::KeyPoint> > opf_kps;
-	ffd->detect(*(input.image0), opf_kps);
+	std::vector<cv::KeyPoint> kps0,kps1;
+	ffd->detect(img0, kps0);
+	ffd->detect(img1, kps1);
 
+	// making sure images are grayscale
+	Mat prevgray, gray;
+	if (img0.channels() == 3) {
+		cvtColor(img0, prevgray, CV_RGB2GRAY);
+		cvtColor(img1, gray, CV_RGB2GRAY);
+	}
+	else {
+		prevgray = img0;
+		gray = img1;
+	}
+
+	vector<Point2f> kps0_pts;
+	KeyPointsToPoints(kps0, kps0_pts);
+
+	vector<uchar> vstatus(kps0_pts.size());
+	vector<float> verror(kps0_pts.size());
+	vector<Point2f> of_res(kps0_pts.size()); //calculated new positions of input features in the second image
+	calcOpticalFlowPyrLK(prevgray, gray, kps0_pts, of_res, vstatus, verror);
+
+	double thresh = 1.0;
+	vector<Point2f> to_find;
+	vector<int> to_find_back_idx;
+	for (unsigned int i = 0; i < vstatus.size(); i++) {
+		if (vstatus[i] && verror[i] < 12.0f) {
+			to_find_back_idx.push_back(i);
+			to_find.push_back(of_res[i]);
+		}
+		else {
+			vstatus[i] = 0;
+		}
+	}
+	Mat to_find_flat = Mat(to_find).reshape(1, to_find.size());
+
+	vector<Point2f> j_pts_to_find;
+	KeyPointsToPoints(kps1, j_pts_to_find);
+	Mat j_pts_flat = Mat(j_pts_to_find).reshape(1, j_pts_to_find.size());
+
+	vector<vector<DMatch> > knn_matches;
+	BFMatcher matcher(CV_L2);
+	matcher.radiusMatch(to_find_flat, j_pts_flat, knn_matches, 2.0f);
+	std::set<int> found_in_imgpts_j; // 去重
+	
+	for (int i = 0; i < knn_matches.size(); i++)
+	{
+		DMatch _m;
+		if (knn_matches[i].size() == 1) 
+		{
+			_m = knn_matches[i][0];
+		}
+		else if (knn_matches[i].size()>1) 
+		{
+			if (knn_matches[i][0].distance / knn_matches[i][1].distance < 0.7) 
+				_m = knn_matches[i][0];
+			else 
+				continue;
+		}
+		else 
+			continue; // no match
+
+		// 去重
+		auto ins_res= found_in_imgpts_j.insert(_m.trainIdx);
+		if (ins_res.second)
+		{ 
+			_m.queryIdx = to_find_back_idx[_m.queryIdx]; //back to original indexing of points for <i_idx>
+			matchesRes.push_back(_m);
+		}
+	}
+
+	Mat out_img;
+	cv::drawMatches(img0, kps0,
+		img1, kps1,
+		matchesRes, out_img);
+
+	char buff[256];
+	sprintf_s(buff, 256, "OF Match,matched keypoint num=%d", matchesRes.size());
+	drawTextLine(out_img, buff, cv::Point(10, -30), cv::Scalar(255, 255, 255));
+	imshow("OF match", out_img);
+
+	//cout << "pruned " << matches->size() << " / " << knn_matches.size() << " matches" << endl;
 }
 int main()
 {
@@ -200,7 +284,8 @@ int main()
 	mipt.img_kp0 = &surf_kp0;
 	mipt.img_kp1 = &surf_kp1;
 
-	test_bruteforce_knn_matcher(mipt);
+	//test_bruteforce_knn_matcher(mipt);
+	test_opticalflow_detect_match(img0, img1);
 	waitKey(0);
     return 0;
 }
