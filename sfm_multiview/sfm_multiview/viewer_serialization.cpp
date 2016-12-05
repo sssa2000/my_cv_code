@@ -11,7 +11,7 @@ void save_structure(const char* file_name, vector<Mat>& rotations, vector<Mat>& 
 	fs << "Point Count" << structure.cols;
 
 	fs << "Rotations" << "[";
-	for (size_t i = 0; i < n; ++i)
+	for (int i = 0; i < n; ++i)
 	{
 		fs << rotations[i];
 	}

@@ -16,6 +16,9 @@
     <Filter Include="源文件\imgui">
       <UniqueIdentifier>{422815b6-0e8f-4c19-9437-8aa395ec1b62}</UniqueIdentifier>
     </Filter>
+    <Filter Include="源文件\gtest">
+      <UniqueIdentifier>{5f437674-3c78-4702-b6f3-79e436a41498}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <Text Include="ReadMe.txt" />
@@ -73,6 +76,12 @@
     </ClCompile>
     <ClCompile Include="sfm_mv.cpp">
       <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="main_gtest.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\gtest\include\src\gtest-all.cc">
+      <Filter>源文件\gtest</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

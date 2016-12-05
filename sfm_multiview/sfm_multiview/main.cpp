@@ -44,6 +44,10 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
+#ifndef LAUNCH_GTEST
+
+
+
 int main(int, char**)
 {
 	auto wndClassName = _T("first_sfm");
@@ -155,3 +159,6 @@ int main(int, char**)
 
 	return 0;
 }
+
+
+#endif // LAUNCH_GTEST
