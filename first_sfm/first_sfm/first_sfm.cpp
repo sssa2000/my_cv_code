@@ -65,6 +65,7 @@ match_res match_feature(image_info * imgs)
 	//两幅图片的特征点 进行特征匹配
 	std::vector<std::vector<DMatch>> knn_matches;
 	BFMatcher matcher(NORM_L2); //暴力求解
+	//knnMatch K = 2 ，即对每个匹配返回两个最近邻描述符，仅当第一个匹配与第二个匹配之间的距离足够小时，才认为这是一个匹配。
 	matcher.knnMatch(imgs[0].descriptors, imgs[1].descriptors, knn_matches, 2);
 
 	//获取满足Ratio Test的最小匹配的距离
