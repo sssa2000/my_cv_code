@@ -138,7 +138,7 @@
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;LAUNCH_GTEST;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>../../gtest/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -215,6 +215,7 @@
     <ClInclude Include="..\..\imgui\imgui.h" />
     <ClInclude Include="..\..\imgui\imgui_impl_dx9.h" />
     <ClInclude Include="..\..\imgui\imgui_internal.h" />
+    <ClInclude Include="MvSfmContex.h" />
     <ClInclude Include="sfm_mv.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
@@ -229,6 +230,7 @@
     <ClCompile Include="..\..\imgui\imgui_impl_dx9.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="main_gtest.cpp" />
+    <ClCompile Include="MvSfmContex.cpp" />
     <ClCompile Include="sfm_mv.cpp" />
     <ClCompile Include="util.cpp" />
     <ClCompile Include="viewer_serialization.cpp" />

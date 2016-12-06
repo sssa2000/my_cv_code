@@ -51,6 +51,9 @@
     <ClInclude Include="sfm_mv.h">
       <Filter>源文件</Filter>
     </ClInclude>
+    <ClInclude Include="MvSfmContex.h">
+      <Filter>源文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -82,6 +85,9 @@
     </ClCompile>
     <ClCompile Include="..\..\gtest\include\src\gtest-all.cc">
       <Filter>源文件\gtest</Filter>
+    </ClCompile>
+    <ClCompile Include="MvSfmContex.cpp">
+      <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>
