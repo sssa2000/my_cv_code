@@ -284,8 +284,8 @@ int main()
 	mipt.img_kp0 = &surf_kp0;
 	mipt.img_kp1 = &surf_kp1;
 
-	//test_bruteforce_knn_matcher(mipt);
-	test_opticalflow_detect_match(img0, img1);
+	test_bruteforce_knn_matcher(mipt);
+	//test_opticalflow_detect_match(img0, img1);
 	waitKey(0);
     return 0;
 }
