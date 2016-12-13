@@ -16,12 +16,59 @@ void image_info::reload_data(const char* image_fn)
 	colors.clear();
 
 }
+void match_res::AddMatchData(const cv::DMatch& m) 
+{ 
+	bestMatch.push_back(m); 
+	matched_pos[0].push_back(img0->key_points[m.queryIdx].pt);
+	matched_pos[1].push_back(img0->key_points[m.trainIdx].pt);
+
+	matched_color[0].push_back(img0->colors[m.queryIdx]);
+	matched_color[1].push_back(img0->colors[m.trainIdx]);
+
+}
+//返回剔除掉了多少个点
+int match_res::CullByMask(const cv::Mat& mask)
+{
+	int count = mask.rows;
+	culled_pos[0].clear();
+	culled_pos[1].clear();
+	culled_color[0].clear();
+	culled_color[1].clear();
 
 
+	for (int i = 0; i <mask.rows; ++i)
+	{
+		if (mask.at<uchar>(i) > 0)
+		{
+			count -= 1;
+			culled_pos[0].push_back(matched_pos[0].at(i));
+			culled_pos[1].push_back(matched_pos[1].at(i));
+			culled_color[0].push_back(matched_color[0].at(i));
+			culled_color[1].push_back(matched_color[1].at(i));
+		}
+	}
+
+	return count;
+}
+double MvSfmContex::GetCameraFocal()
+{
+	double focal_length = (double)0.5*(m_camera_K.at<float>(0) + m_camera_K.at<float>(4));
+	return focal_length;
+}
+Point2d MvSfmContex::GetCameraPrinP()
+{
+	Point2d principle_point((double)m_camera_K.at<float>(2), (double)m_camera_K.at<float>(5));
+	return principle_point;
+}
 
 MvSfmContex::MvSfmContex()
 {
 	m_match_res = 0;
+	//写死 camera的内部矩阵，假设已经经过了标定
+	m_camera_K=Mat(Matx33f(
+		2759.48f, 0, 1520.69f,
+		0, 2764.16f, 1006.81f,
+		0, 0, 1));
 }
 
 MvSfmContex::~MvSfmContex()

@@ -129,6 +129,82 @@ void seq_match_feature(MvSfmContex* contex)
 //}
 
 
+
+bool sloveE(MvSfmContex* contex,int image_idx0,int image_idx1)
+{
+	FUN_TIMER;
+	//根据内参矩阵获取相机的焦距和光心坐标（主点坐标）
+	double f=contex->GetCameraFocal();
+	Point2d pp=contex->GetCameraPrinP();
+	
+	//根据匹配点求取本征矩阵，使用RANSAC，进一步排除失配点
+	match_res* mr = contex->GetMatchData(image_idx0, image_idx1);
+	essMatrixRes& out = mr->GetEMatRes();
+	out.essMatrix = findEssentialMat(
+		mr->GetPosData(0), mr->GetPosData(1), 
+		f, pp, RANSAC, 0.999, 1.0, 
+		out.mask);
+
+	//mask中 0表示异常的点 1表示正常的点
+	out.feasible_count = countNonZero(out.mask);
+	//对于RANSAC而言，outlier数量大于50%时，结果是不可靠的
+	if (out.feasible_count <= 15 ||
+		((float)out.feasible_count / mr->GetPosData(0).size()) < 0.6f)
+		return (false);
+	return true;
+}
+void tri_reconstruct(MvSfmContex* contex,const Mat& R,const Mat& T,Mat& res)
+{
+	FUN_TIMER;
+	//两个相机的投影矩阵[R T]，triangulatePoints只支持float型
+	Mat proj1(3, 4, CV_32FC1); //CV_32FC1 表示 矩阵的每个元素是float32，且这个float表示一个通道
+	proj1(Range(0, 3), Range(0, 3)) = Mat::eye(3, 3, CV_32FC1);
+	proj1.col(3) = Mat::zeros(3, 1, CV_32FC1);
+	
+	Mat proj2(3, 4, CV_32FC1);
+	R.convertTo(proj2(Range(0, 3), Range(0, 3)), CV_32FC1);
+	T.convertTo(proj2.col(3), CV_32FC1);
+
+	const Mat& fK = contex->GetCameraK();
+	proj1 = fK*proj1;
+	proj2 = fK*proj2;
+
+	//三角重建
+	cv::triangulatePoints(proj1, proj2, 
+		contex->GetMatchData(0, 1)->GetPosData(0), 
+		contex->GetMatchData(0, 1)->GetPosData(1),
+		res);
+}
+
+//init reconstruct use first and second image
+bool reconstruct_fs(MvSfmContex* contex)
+{
+	//根据头两张照片求解E
+	essMatrixRes res;
+	bool b=sloveE(contex,0,1);
+	
+	//分解本征矩阵，获取相对变换
+	Mat& R = contex->GetMatchData(0, 1)->GetCameraR();
+	Mat& T = contex->GetMatchData(0, 1)->GetCameraT();
+	int pass_count = cv::recoverPose(res.essMatrix, 
+		contex->GetMatchData(0, 1)->GetPosData(0), 
+		contex->GetMatchData(0, 1)->GetPosData(1), 
+		R, 
+		T, 
+		contex->GetCameraFocal(), 
+		contex->GetCameraPrinP(), 
+		res.mask);
+
+	//位于两个相机前方的点的数量要足够大
+	if (((float)pass_count) / res.feasible_count < 0.7f)
+		return false;
+
+	//重建三维空间的位置 使用三角重建法
+	Mat structure;	//4行N列的矩阵，每一列代表空间中的一个点
+	int cull_count = contex->GetMatchData(0, 1)->CullByMask(res.mask);
+	tri_reconstruct(contex,R,T,structure);
+	return true;
+}
 //入口
 #ifndef LAUNCH_GTEST
 bool sfm_mv()
@@ -139,11 +215,7 @@ TEST(sfm_mv, all_exec)
 	FUN_TIMER;
 	MvSfmContex contex;
 
-	//写死 camera的内部矩阵，假设已经经过了标定
-	Mat K(Matx33d(
-		2759.48, 0, 1520.69,
-		0, 2764.16, 1006.81,
-		0, 0, 1));
+
 
 
 	//读取一个目录下的所有image
@@ -160,8 +232,8 @@ TEST(sfm_mv, all_exec)
 	EXPECT_EQ(contex.GetMatchData(0, 0)->GetMatchedPointCount(), (size_t)0);
 	EXPECT_EQ(contex.GetMatchData(2, 0), nullptr);
 
-	////针对头两张进行重建
-	//init_reconstruct();
+	//针对头两张进行重建
+	reconstruct_fs(contex);
 
 	////依次加入新的图片（idx+1） 把结果融合到重建结果中
 	////
