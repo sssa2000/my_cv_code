@@ -142,6 +142,7 @@ essMatRes slovePosRotFromE(const Mat& K, const match_res& mr)
 	if (E.empty()) 
 		return essMatRes(false);
 
+	//mask中 0表示异常的点 1表示正常的点
 	double feasible_count = countNonZero(res.mask);
 	std::cout << (int)feasible_count << " -in- " << mr.matched_pos_left.size() << endl;
 	
