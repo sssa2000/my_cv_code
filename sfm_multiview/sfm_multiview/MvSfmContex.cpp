@@ -75,6 +75,35 @@ MvSfmContex::~MvSfmContex()
 {
 	Clean();
 }
+
+//初始化所有的feature point和3d点的对应关系
+void MvSfmContex::ResetAllFeaPoint()
+{
+	m_fusion_booking.swap(std::vector<FeaPointMapping>(m_images.size()));
+	int i = 0;
+	for (auto& fm:m_fusion_booking)
+	{
+		fm.Reset(m_images[i++].key_points.size());
+	}
+
+}
+void MvSfmContex::FusionResult1st(int img0_idx, int img1_idx)
+{
+	match_res* mr=GetMatchData(img0_idx, img1_idx);
+	int idx = 0;
+	auto& cvmatches = mr->GetDMData();
+	auto& mask = mr->GetEMatRes().mask;
+	for (size_t i = 0; i < cvmatches.size();++i)
+	{
+		if (mask.at<uchar>(i) == 0)
+			continue;
+
+		m_fusion_booking[img0_idx].SetIdxMapping(cvmatches[i].queryIdx,idx);
+		m_fusion_booking[img1_idx].SetIdxMapping(cvmatches[i].trainIdx,idx);
+		++idx;
+	}
+
+}
 void MvSfmContex::Clean()
 {
 	//clean
@@ -158,4 +187,14 @@ match_res* MvSfmContex::GetMatchData(size_t idx0, size_t idx1)
 	if (idx0 >= m_images.size() || idx1 >= m_images.size())
 		return 0;
 	return &(m_match_res[idx0][idx1]);
+}
+
+void FeaPointMapping::Reset(int feaPoNum)
+{
+	m_3d_idx_mapping.swap(std::vector<int>(feaPoNum,-1));
+}
+
+void FeaPointMapping::SetIdxMapping(int feaPointIdx, int _3dPosIdx)
+{
+	m_3d_idx_mapping.at(feaPointIdx) = _3dPosIdx;
 }

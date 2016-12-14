@@ -23,6 +23,19 @@ struct essMatrixRes
 	Mat essMatrix;
 	Mat mask;
 };
+
+//用于记录：1张图片的特征点 和 三维空间点的对应关系
+class FeaPointMapping
+{
+public:
+	FeaPointMapping() {}
+	~FeaPointMapping() {}
+	void Reset(int feaPoNum);
+	void SetIdxMapping(int feaPointIdx, int _3dPosIdx);
+
+private:
+	std::vector<int> m_3d_idx_mapping;
+};
 //每一个match_res对象表示某两张图片特征点匹配的结果
 //todo 这个命名不太好 这个对象的职责是保存两张图片的计算结果，包括特征匹配，本质矩阵，相机位置估算
 class match_res
@@ -41,8 +54,12 @@ public:
 	}
 	void AddMatchData(const cv::DMatch& m);//todo 把dmatch的概念藏起来
 	size_t GetMatchedPointCount() { return bestMatch.size(); }
+	const std::vector<cv::DMatch>& GetDMData() { return bestMatch; }
 	const std::vector<cv::Point2f>& GetPosData(int leftright) { return matched_pos[leftright]; }
 	const std::vector<cv::Vec3b>& GetColorData(int leftright) { return matched_color[leftright]; }
+	const std::vector<cv::Point2f>& GetCulledPosData(int leftright) { return culled_pos[leftright]; }
+	const std::vector<cv::Vec3b>& GetCulledColorData(int leftright) { return culled_color[leftright]; }
+
 	int CullByMask(const cv::Mat& mask);
 	cv::Mat& GetCameraR() { return m_R; }
 	cv::Mat& GetCameraT() { return m_T; }
@@ -59,7 +76,7 @@ private:
 	std::vector<cv::Vec3b> culled_color[2];//匹配的点的颜色（mask剔除之后）
 
 
-	std::vector<cv::DMatch> bestMatch; //for debug
+	std::vector<cv::DMatch> bestMatch;
 };
 
 //保存在重建过程中的数据
@@ -84,10 +101,13 @@ public:
 
 	match_res* GetMatchData(size_t idx0, size_t idx1);
 	const cv::Mat& GetCameraK() { return m_camera_K; }
+	void ResetAllFeaPoint();
+	void FusionResult1st(int img0_idx, int img1_idx);
 protected:
 	void Clean();
 	cv::Mat m_camera_K;
 	std::vector<image_info> m_images;
-	match_res** m_match_res;
-	//std::vector<std::vector<match_res>> m_match_res; //二维数组 长宽都等于图片的数量，表示match的匹配关系 其实这里只需要存一个三角形的矩阵即可
+	match_res** m_match_res;//二维数组 长宽都等于图片的数量，表示match的匹配关系 其实这里只需要存一个三角形的矩阵即可
+	std::vector<FeaPointMapping> m_fusion_booking;
+	std::vector<Point3d> m_finaly_result;
 };

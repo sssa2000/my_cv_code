@@ -171,24 +171,28 @@ void tri_reconstruct(MvSfmContex* contex,const Mat& R,const Mat& T,Mat& res)
 
 	//三角重建
 	cv::triangulatePoints(proj1, proj2, 
-		contex->GetMatchData(0, 1)->GetPosData(0), 
-		contex->GetMatchData(0, 1)->GetPosData(1),
+		contex->GetMatchData(0, 1)->GetCulledPosData(0),
+		contex->GetMatchData(0, 1)->GetCulledPosData(1),
 		res);
+
 }
 
 //init reconstruct use first and second image
 bool reconstruct_fs(MvSfmContex* contex)
 {
+	contex->ResetAllFeaPoint();
+
 	//根据头两张照片求解E
-	essMatrixRes res;
+	match_res* mr=contex->GetMatchData(0, 1);
+	essMatrixRes& res= mr->GetEMatRes();
 	bool b=sloveE(contex,0,1);
 	
 	//分解本征矩阵，获取相对变换
-	Mat& R = contex->GetMatchData(0, 1)->GetCameraR();
-	Mat& T = contex->GetMatchData(0, 1)->GetCameraT();
+	Mat& R = mr->GetCameraR();
+	Mat& T = mr->GetCameraT();
 	int pass_count = cv::recoverPose(res.essMatrix, 
-		contex->GetMatchData(0, 1)->GetPosData(0), 
-		contex->GetMatchData(0, 1)->GetPosData(1), 
+		mr->GetPosData(0), 
+		mr->GetPosData(1), 
 		R, 
 		T, 
 		contex->GetCameraFocal(), 
@@ -203,6 +207,10 @@ bool reconstruct_fs(MvSfmContex* contex)
 	Mat structure;	//4行N列的矩阵，每一列代表空间中的一个点
 	int cull_count = contex->GetMatchData(0, 1)->CullByMask(res.mask);
 	tri_reconstruct(contex,R,T,structure);
+
+	//登记 对应关系
+	contex->FusionResult1st(0, 1);
+
 	return true;
 }
 //入口
