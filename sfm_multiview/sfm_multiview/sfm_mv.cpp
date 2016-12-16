@@ -175,8 +175,26 @@ void tri_reconstruct(MvSfmContex* contex,const Mat& R,const Mat& T,Mat& res)
 		contex->GetMatchData(0, 1)->GetCulledPosData(1),
 		res);
 
-}
+	//齐次坐标处理
+	for (int i = 0; i < res.cols; ++i)
+	{
+		cv::Vec4f& p=res.at<Vec4f>(0, i);//only one row
+		p[0] /= p[3];
+		p[1] /= p[3];
+		p[2] /= p[3];
+	}
 
+}
+bool reconstruct_other(int idx0,int idx1,MvSfmContex* contex)
+{
+	reconRecipe* recipe=contex->RequireRecipes(idx0, idx1);
+
+	pnpQueryData* pnp = contex.Query3d2dIntersection(idx, idx1);
+	//根据 第idx图片的已经得到的3d点 和 第idx+1 图片的特征点，求得变换矩阵R和T
+	calc_trans_rot_pnp(pnp);
+
+
+	return true;
 //init reconstruct use first and second image
 bool reconstruct_fs(MvSfmContex* contex)
 {
@@ -241,20 +259,17 @@ TEST(sfm_mv, all_exec)
 	EXPECT_EQ(contex.GetMatchData(2, 0), nullptr);
 
 	//针对头两张进行重建
-	reconstruct_fs(contex);
+	reconstruct_fs(&contex);
 
-	////依次加入新的图片（idx+1） 把结果融合到重建结果中
-	////
-	//for (int idx = 1; idx < n;++idx)
-	//{
-	//	//根据 第idx图片的已经得到的3d点 和 第idx+1 图片的特征点，求得变换矩阵R和T
-	//	calc_trans_rot_pnp();
+	//依次加入新的图片（idx+1） 把结果融合到重建结果中
+	//
+	for (int idx = 1; idx < n;++idx)
+	{
+		//根据之前求得的R，T进行三维重建
+		reconstruct_other(&contex);
 
-	//	//根据之前求得的R，T进行三维重建
-	//	reconstruct();
-
-	//	//融合 去掉重复
-	//	dedup_fusion();
+		//融合 去掉重复
+		dedup_fusion();
 
 
 	//}

@@ -20,8 +20,8 @@ struct image_info
 struct essMatrixRes
 {
 	int feasible_count;
-	Mat essMatrix;
-	Mat mask;
+	cv::Mat essMatrix;
+	cv::Mat mask;
 };
 
 //用于记录：1张图片的特征点 和 三维空间点的对应关系
@@ -79,6 +79,35 @@ private:
 	std::vector<cv::DMatch> bestMatch;
 };
 
+//用于 solvePnPRansac 的数据
+//表示的是 第i幅图像中重建得到三维点，以及这些三维点在第i+1幅图像中对应的特征点
+class pnpQueryData
+{
+public:
+	pnpQueryData(int idx0, int idx1) {
+		m_idx0 = idx0, m_idx1 = idx1;
+	}
+	~pnpQueryData(){}
+protected:
+	int m_idx0;
+	int m_idx1;
+	std::vector<cv::Point3f> m_3d_points;
+	std::vector<cv::Point2f> m_fea_points;
+
+};
+
+//一个reconRecipe表示的是两张图片重建 需要用的数据，所以称之为配方
+class reconRecipe
+{
+public:
+	reconRecipe() = default;
+	~reconRecipe() = default;
+
+protected:
+	cv::Mat m_R;
+	cv::Mat m_T;
+
+};
 //保存在重建过程中的数据
 class MvSfmContex
 {
@@ -94,7 +123,6 @@ public:
 	void ResetContex(size_t imageCount);
 
 	image_info* SetImageData(int idx, const char* fn);
-
 	image_info* GetImageByIdx(size_t idx);
 
 	size_t GetImageCount();
@@ -108,6 +136,8 @@ protected:
 	cv::Mat m_camera_K;
 	std::vector<image_info> m_images;
 	match_res** m_match_res;//二维数组 长宽都等于图片的数量，表示match的匹配关系 其实这里只需要存一个三角形的矩阵即可
-	std::vector<FeaPointMapping> m_fusion_booking;
-	std::vector<Point3d> m_finaly_result;
+	std::vector<FeaPointMapping> m_fusion_booking; //和m_images数量一样
+	std::vector<cv::Point3d> m_finaly_result;
+	std::vector<pnpQueryData> m_pnpQueryDatas;
+	std::vector<reconRecipe> m_Recipes;
 };
