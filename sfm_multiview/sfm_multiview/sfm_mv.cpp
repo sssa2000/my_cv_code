@@ -55,7 +55,7 @@ void analyse_signle_image(MvSfmContex* contex,size_t idx)
 	//将每个keypoint的颜色保存起来
 	for (auto& kp : image.key_points)
 	{
-		image.colors.push_back(image.img.at<Vec3b>(kp.pt.y, kp.pt.x));
+		image.colors.push_back(image.img.at<Vec3b>((int)(kp.pt.y), (int)(kp.pt.x)));
 	}
 	
 }
@@ -139,12 +139,13 @@ bool sloveE(MvSfmContex* contex,int image_idx0,int image_idx1)
 	
 	//根据匹配点求取本征矩阵，使用RANSAC，进一步排除失配点
 	match_res* mr = contex->GetMatchData(image_idx0, image_idx1);
-	essMatrixRes& out = mr->GetEMatRes();
+	essMatrixRes out;
 	out.essMatrix = findEssentialMat(
 		mr->GetPosData(0), mr->GetPosData(1), 
 		f, pp, RANSAC, 0.999, 1.0, 
 		out.mask);
 
+	contex->SetEssMat(out);
 	//mask中 0表示异常的点 1表示正常的点
 	out.feasible_count = countNonZero(out.mask);
 	//对于RANSAC而言，outlier数量大于50%时，结果是不可靠的
@@ -153,83 +154,96 @@ bool sloveE(MvSfmContex* contex,int image_idx0,int image_idx1)
 		return (false);
 	return true;
 }
-void tri_reconstruct(MvSfmContex* contex,const Mat& R,const Mat& T,Mat& res)
+
+void tri_reconstruct(MvSfmContex* contex, reconRecipe* pr)
 {
 	FUN_TIMER;
-	//两个相机的投影矩阵[R T]，triangulatePoints只支持float型
-	Mat proj1(3, 4, CV_32FC1); //CV_32FC1 表示 矩阵的每个元素是float32，且这个float表示一个通道
-	proj1(Range(0, 3), Range(0, 3)) = Mat::eye(3, 3, CV_32FC1);
-	proj1.col(3) = Mat::zeros(3, 1, CV_32FC1);
-	
-	Mat proj2(3, 4, CV_32FC1);
-	R.convertTo(proj2(Range(0, 3), Range(0, 3)), CV_32FC1);
-	T.convertTo(proj2.col(3), CV_32FC1);
 
-	const Mat& fK = contex->GetCameraK();
-	proj1 = fK*proj1;
-	proj2 = fK*proj2;
+	//根据R和T 建立投影矩阵
+	pr->CalcCameraProjMatrix(contex->GetCameraK());
 
 	//三角重建
-	cv::triangulatePoints(proj1, proj2, 
-		contex->GetMatchData(0, 1)->GetCulledPosData(0),
-		contex->GetMatchData(0, 1)->GetCulledPosData(1),
+	auto md = contex->GetMatchData(pr->GetImgIdx(0), pr->GetImgIdx(1));
+	cv::Mat& res = pr->GetReconStructRes();
+	cv::triangulatePoints(pr->GetCameraProjMatrix(0), 
+		pr->GetCameraProjMatrix(1),
+		pr->GetPosData(0),
+		md->GetPosData(1),
 		res);
 
-	//齐次坐标处理
+	//齐次坐标处理 ；其实这里可以不除 融合的时候通过了判断再除
 	for (int i = 0; i < res.cols; ++i)
 	{
-		cv::Vec4f& p=res.at<Vec4f>(0, i);//only one row
+		cv::Vec4f& p = res.at<Vec4f>(0, i);//only one row
 		p[0] /= p[3];
 		p[1] /= p[3];
 		p[2] /= p[3];
 	}
-
 }
-bool reconstruct_other(int idx0,int idx1,MvSfmContex* contex)
-{
-	reconRecipe* recipe=contex->RequireRecipes(idx0, idx1);
 
-	pnpQueryData* pnp = contex.Query3d2dIntersection(idx, idx1);
+reconRecipe* reconstruct_other(int idx0, int idx1, MvSfmContex* contex)
+{
+	auto md = contex->GetMatchData(idx0, idx1);
+	reconRecipe* recipe = contex->RequireRecipes(idx0, idx1, md);
+	pnpQueryData* pnp = contex->Query3d2dIntersection(idx0, idx1);
 	//根据 第idx图片的已经得到的3d点 和 第idx+1 图片的特征点，求得变换矩阵R和T
-	calc_trans_rot_pnp(pnp);
+
+	//求解变换矩阵
+	Mat r, T;
+	cv::solvePnPRansac(pnp->Get3dPoint(),
+		pnp->GetFeaPoint(),
+		contex->GetCameraK(),
+		noArray(),
+		r, T);
+	recipe->SetCameraT(T);
+	recipe->SetCameraRVector(r);
+
+	md->GetPosData(0);
+	md->GetPosData(1);
+
+	tri_reconstruct(contex, recipe);
 
 
-	return true;
+
+	return recipe;
+}
 //init reconstruct use first and second image
-bool reconstruct_fs(MvSfmContex* contex)
+reconRecipe* reconstruct_fs(MvSfmContex* contex)
 {
-	contex->ResetAllFeaPoint();
+	
+	int idx0 = 0;
+	int idx1 = 1;
+	match_res* mr = contex->GetMatchData(idx0, idx1);
+	reconRecipe* recipe = contex->RequireRecipes(idx0, idx1, mr);
 
 	//根据头两张照片求解E
-	match_res* mr=contex->GetMatchData(0, 1);
-	essMatrixRes& res= mr->GetEMatRes();
 	bool b=sloveE(contex,0,1);
-	
+	const essMatrixRes& essMat = contex->GetEssMat();
+
 	//分解本征矩阵，获取相对变换
-	Mat& R = mr->GetCameraR();
-	Mat& T = mr->GetCameraT();
-	int pass_count = cv::recoverPose(res.essMatrix, 
+	Mat R,T,mask;
+	int pass_count = cv::recoverPose(essMat.essMatrix,
 		mr->GetPosData(0), 
 		mr->GetPosData(1), 
-		R, 
-		T, 
+		essMat.cameraR,
+		essMat.cameraT,
 		contex->GetCameraFocal(), 
 		contex->GetCameraPrinP(), 
-		res.mask);
-
+		essMat.mask);
 	//位于两个相机前方的点的数量要足够大
-	if (((float)pass_count) / res.feasible_count < 0.7f)
+	if (((float)pass_count) / essMat.feasible_count < 0.7f)
 		return false;
 
+	recipe->SetCameraT(T);
+	recipe->SetCameraRMatrix(R);
+	int cull_count = recipe->SetMask(essMat.mask);
+
+
 	//重建三维空间的位置 使用三角重建法
-	Mat structure;	//4行N列的矩阵，每一列代表空间中的一个点
-	int cull_count = contex->GetMatchData(0, 1)->CullByMask(res.mask);
-	tri_reconstruct(contex,R,T,structure);
+	tri_reconstruct(contex,recipe);
 
-	//登记 对应关系
-	contex->FusionResult1st(0, 1);
 
-	return true;
+	return recipe;
 }
 //入口
 #ifndef LAUNCH_GTEST
@@ -241,12 +255,10 @@ TEST(sfm_mv, all_exec)
 	FUN_TIMER;
 	MvSfmContex contex;
 
-
-
-
 	//读取一个目录下的所有image
 	int img_num = read_analyse_images(&contex,"../media/mv_images/1");
-	
+	contex.InitResult();
+
 	EXPECT_EQ(img_num, 3);
 	EXPECT_EQ(contex.GetImageByIdx(3), nullptr);
 
@@ -258,20 +270,19 @@ TEST(sfm_mv, all_exec)
 	EXPECT_EQ(contex.GetMatchData(0, 0)->GetMatchedPointCount(), (size_t)0);
 	EXPECT_EQ(contex.GetMatchData(2, 0), nullptr);
 
+
 	//针对头两张进行重建
-	reconstruct_fs(&contex);
+	reconRecipe* rp0=reconstruct_fs(&contex);
+	contex.FusionResult1st();
 
 	//依次加入新的图片（idx+1） 把结果融合到重建结果中
 	//
-	for (int idx = 1; idx < n;++idx)
+	for (int idx = 1; idx < img_num;++idx)
 	{
 		//根据之前求得的R，T进行三维重建
-		reconstruct_other(&contex);
+		reconRecipe* pother=reconstruct_other(idx,idx+1,&contex);
+		contex.FusionResult(idx, idx + 1, pother);
 
-		//融合 去掉重复
-		dedup_fusion();
-
-
-	//}
+	}
 	//return true;
 }
