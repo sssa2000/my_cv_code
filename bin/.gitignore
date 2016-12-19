@@ -1,2 +1,7 @@
 *.ilk
 *.pdb
+/first_sfm.exe
+/imgui.ini
+/sfm_multiview.exe
+/structure.yml
+/test_cv_algo.exe
