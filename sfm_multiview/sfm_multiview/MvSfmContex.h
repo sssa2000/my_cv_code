@@ -50,13 +50,15 @@ public:
 
 	int RegResultIdx(int imgIdx, int feaPointIdx, int point3dIdx);
 	int Query3dPointIdx(int imgIdx, int feaPointIdx);
-	void Add3DPoint(int img0idx, int img1idx, const cv::DMatch& ma, const cv::Vec4f& pos);
-	const cv::Point3d& Get3dPoint(int idx);
+	void Add3DPoint(int img0idx, int img1idx, const cv::DMatch& ma, const cv::Vec4f& pos,const cv::Vec3b& cols);
+	const cv::Point3f& Get3dPoint(int idx);
+	const std::vector<cv::Point3f>& GetAllResult() { return m_finaly_result; }
+	const std::vector<cv::Vec3b>& GetAllColor() { return m_finaly_col_result; }
 private:
 	SImgPointMapping& GetFeaPointMap(int imgidx) { return m_fusion_booking.at(imgidx); }
 	std::vector<SImgPointMapping> m_fusion_booking; //和m_images数量一样
-	std::vector<cv::Point3d> m_finaly_result; //最终的结果用于保存到文件或者渲染
-
+	std::vector<cv::Point3f> m_finaly_result; //最终的结果用于保存到文件或者渲染
+	std::vector<cv::Vec3b> m_finaly_col_result;
 };
 //每一个match_res对象表示某两张图片特征点匹配的结果
 class match_res
@@ -118,6 +120,9 @@ public:
 	void SetCameraRMatrix(cv::Mat& R);
 	void SetCameraRVector(cv::Mat& r);
 	void SetCameraT(cv::Mat& T);
+	const cv::Mat& GetCameraRMatrix() {return m_R;}
+	const cv::Mat& GetCameraT() { return m_T; }
+
 	int SetMask(const cv::Mat& mask);
 	const cv::Mat& GetCameraProjMatrix(int leftright);
 	void CalcCameraProjMatrix(const cv::Mat& fK);
@@ -165,6 +170,7 @@ public:
 	const essMatrixRes& GetEssMat() { return m_emr; }
 	reconRecipe* RequireRecipes(int img0_idx, int img1_idx, match_res* mr);
 	pnpQueryData* Query3d2dIntersection(int img0_idx, int img1_idx);
+	void saveResToFile();
 protected:
 	void Clean();
 	cv::Mat m_camera_K;

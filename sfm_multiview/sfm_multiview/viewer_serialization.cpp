@@ -1,14 +1,18 @@
 #include "viewer_serialization.h"
 using namespace cv;
 using namespace std;
-void save_structure(const char* file_name, vector<Mat>& rotations, vector<Mat>& motions, Mat& structure, vector<Vec3b>& colors)
+void save_structure(const char* file_name, 
+	const vector<Mat>& rotations, 
+	const vector<Mat>& motions, 
+	const vector<Point3f>& structure,
+	const vector<Vec3b>& colors)
 {
 	
 	int n = (int)rotations.size();
 
-	FileStorage fs(file_name, FileStorage::WRITE);
+	cv::FileStorage fs(file_name, FileStorage::WRITE);
 	fs << "Camera Count" << n;
-	fs << "Point Count" << structure.cols;
+	fs << "Point Count" << (int)structure.size();
 
 	fs << "Rotations" << "[";
 	for (int i = 0; i < n; ++i)
@@ -25,11 +29,9 @@ void save_structure(const char* file_name, vector<Mat>& rotations, vector<Mat>& 
 	fs << "]";
 
 	fs << "Points" << "[";
-	for (int i = 0; i < structure.cols; ++i)
+	for (size_t i = 0; i < structure.size(); ++i)
 	{
-		Mat_<float> c = structure.col(i);
-		c /= c(3);	//Æë´Î×ø±êdiv
-		fs << Point3f(c(0), c(1), c(2));
+		fs << structure[i];
 	}
 	fs << "]";
 

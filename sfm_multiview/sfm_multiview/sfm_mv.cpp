@@ -27,15 +27,6 @@ fun_contex g_fun_contex;
 #define FUN_TIMER fun_timer_obj obj(__FUNCTION__,&g_fun_contex)
 
 
-void calc_trans_rot_pnp()
-{
-	//找到 idx和idx+1 的匹配的结果，找到以下对应关系：
-	//第idx图片的匹配点、三位点  《===》 第idx+1 图片的像素点
-
-	//PnP求解变换矩阵
-
-	//将旋转向量转换为旋转矩阵
-}
 
 //读取单个图片文件 并分析特征点
 void analyse_signle_image(MvSfmContex* contex,size_t idx)
@@ -170,7 +161,6 @@ void tri_reconstruct(MvSfmContex* contex, reconRecipe* pr)
 		pr->GetPosData(0),
 		md->GetPosData(1),
 		res);
-
 	//齐次坐标处理 ；其实这里可以不除 融合的时候通过了判断再除
 	for (int i = 0; i < res.cols; ++i)
 	{
@@ -198,12 +188,7 @@ reconRecipe* reconstruct_other(int idx0, int idx1, MvSfmContex* contex)
 	recipe->SetCameraT(T);
 	recipe->SetCameraRVector(r);
 
-	md->GetPosData(0);
-	md->GetPosData(1);
-
 	tri_reconstruct(contex, recipe);
-
-
 
 	return recipe;
 }
@@ -266,8 +251,8 @@ TEST(sfm_mv, all_exec)
 	seq_match_feature(&contex);
 	EXPECT_GT(contex.GetMatchData(0, 1)->GetMatchedPointCount(), (size_t)0);
 	EXPECT_GT(contex.GetMatchData(1, 2)->GetMatchedPointCount(), (size_t)0);
-	EXPECT_GT(contex.GetMatchData(2, 3), nullptr);
-	EXPECT_EQ(contex.GetMatchData(0, 0)->GetMatchedPointCount(), (size_t)0);
+	EXPECT_EQ(contex.GetMatchData(2, 3), nullptr);
+	EXPECT_EQ(contex.GetMatchData(0, 0), nullptr);
 	EXPECT_EQ(contex.GetMatchData(2, 0), nullptr);
 
 
@@ -284,5 +269,12 @@ TEST(sfm_mv, all_exec)
 		contex.FusionResult(idx, idx + 1, pother);
 
 	}
+
+	//save to file
+
+	contex.saveResToFile();
+
+	
+
 	//return true;
 }

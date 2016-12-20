@@ -2,4 +2,8 @@
 #include <vector>
 #include <opencv/cv.hpp>
 
-void save_structure(const char* file_name, std::vector<cv::Mat>& rotations, std::vector<cv::Mat>& motions, cv::Mat& structure, std::vector<cv::Vec3b>& colors);
+void save_structure(const char* file_name, 
+	const std::vector<cv::Mat>& rotations, 
+	const std::vector<cv::Mat>& motions,
+	const std::vector<cv::Point3f>& structure,
+	const std::vector<cv::Vec3b>& colors);

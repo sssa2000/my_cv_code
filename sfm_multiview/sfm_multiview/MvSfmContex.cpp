@@ -1,6 +1,8 @@
 #include "MvSfmContex.h"
 #include <opencv2\imgcodecs.hpp>
 #include <opencv2\calib3d\calib3d.hpp>
+#include <ctime>
+#include "viewer_serialization.h"
 using namespace cv;
 using namespace std;
 
@@ -21,10 +23,10 @@ void match_res::AddMatchData(const cv::DMatch& m)
 { 
 	bestMatch.push_back(m); 
 	matched_pos[0].push_back(img0->key_points[m.queryIdx].pt);
-	matched_pos[1].push_back(img0->key_points[m.trainIdx].pt);
+	matched_pos[1].push_back(img1->key_points[m.trainIdx].pt);
 
 	matched_color[0].push_back(img0->colors[m.queryIdx]);
-	matched_color[1].push_back(img0->colors[m.trainIdx]);
+	matched_color[1].push_back(img1->colors[m.trainIdx]);
 
 }
 //初始化所有的feature point和3d点的对应关系
@@ -49,17 +51,20 @@ int SfmResult::Query3dPointIdx(int imgIdx, int feaPointIdx)
 	return m_fusion_booking.at(imgIdx).GetIdxMapping(feaPointIdx);
 }
 
-void SfmResult::Add3DPoint(int img0idx,int img1idx, const cv::DMatch& ma,const cv::Vec4f& pos)
+void SfmResult::Add3DPoint(int img0idx,int img1idx, 
+	const cv::DMatch& ma,const cv::Vec4f& pos, 
+	const cv::Vec3b& col)
 {
 	m_finaly_result.push_back(cv::Point3f(
 		pos[0],	pos[1],	pos[2]));
+	m_finaly_col_result.push_back(col);
 	size_t lastidx = m_finaly_result.size()-1;
 	m_fusion_booking.at(img0idx).SetIdxMapping(ma.queryIdx, lastidx);
 	m_fusion_booking.at(img1idx).SetIdxMapping(ma.trainIdx, lastidx);
 
 }
 
-const cv::Point3d& SfmResult::Get3dPoint(int idx)
+const cv::Point3f& SfmResult::Get3dPoint(int idx)
 {
 	return m_finaly_result.at(idx);
 }
@@ -114,8 +119,10 @@ void MvSfmContex::FusionResult1st()
 //把本次重建的结果融合到m_finaly_result中去
 void MvSfmContex::FusionResult(int img0_idx, int img1_idx, reconRecipe* pri)
 {
-	auto& cvmd=pri->GetMatchData()->GetDMData();
-	cv::Mat res3d=pri->GetReconStructRes();
+	auto mr = pri->GetMatchData();
+	auto& cols=mr->GetColorData(0);
+	auto& cvmd= mr->GetDMData();
+	cv::Mat& res3d=pri->GetReconStructRes();
 	//SImgPointMapping& img1_mapping = m_result.GetFeaPointMap(img1_idx);
 	int i = 0;
 	for (auto& m:cvmd)
@@ -126,9 +133,7 @@ void MvSfmContex::FusionResult(int img0_idx, int img1_idx, reconRecipe* pri)
 			m_result.RegResultIdx(img1_idx, i, residx); //如果这个点已经存在了，把idx复制过来
 		else
 		{
-			m_result.Add3DPoint(img0_idx, img1_idx,m,res3d.at<Vec4f>(i));
-
-
+			m_result.Add3DPoint(img0_idx, img1_idx,m,res3d.at<Vec4f>(i), cols.at(i));
 		}
 		++i;
 	}
@@ -195,7 +200,7 @@ void MvSfmContex::EndAddImage()
 	}
 
 	//init m_Recipes
-	m_Recipes.swap(vector<reconRecipe*>(imageCount-1)); 
+	m_Recipes.swap(vector<reconRecipe*>(imageCount)); 
 	std::fill(m_Recipes.begin(), m_Recipes.end(), nullptr);
 
 	//init m_pnpQueryDatas
@@ -240,7 +245,9 @@ size_t MvSfmContex::GetImageCount()
 
 match_res* MvSfmContex::GetMatchData(size_t idx0, size_t idx1)
 {
-	if (idx0 >= m_images.size() || idx1 >= m_images.size())
+	if (idx0 >= m_images.size() || 
+		idx1 >= m_images.size() ||
+		idx1 - idx0!=1)
 		return 0;
 	return &(m_match_res[idx0][idx1]);
 }
@@ -249,9 +256,8 @@ reconRecipe* MvSfmContex::RequireRecipes(int img0_idx, int img1_idx, match_res* 
 {
 	//这里假设img0_idx和img1_idx一定是连续 并且img0_idx<img1_idx
 	assert(img1_idx - img0_idx == 1);
-	assert(img0_idx > 0);
 
-	auto& r = m_Recipes.at(img0_idx-1);
+	auto& r = m_Recipes.at(img0_idx);
 	assert(r == 0);
 
 	r = new reconRecipe(img0_idx, img1_idx, mr);
@@ -273,6 +279,27 @@ pnpQueryData* MvSfmContex::Query3d2dIntersection(int img0_idx, int img1_idx)
 		pnp->AddPoint(m_result.Get3dPoint(_3didx), img1Kp[m.trainIdx].pt);
 	}
 	return pnp;
+}
+
+void MvSfmContex::saveResToFile()
+{
+	char name[256];
+	time_t t=std::time(0);
+	std::strftime(name, sizeof(name), "sfm_%H%M%S", std::localtime(&t));
+	
+	vector<Mat> rotations;
+	vector<Mat> motions;
+	vector<vector<Vec3b>> colors_for_all;
+	for (auto& r: m_Recipes)
+	{
+		rotations.push_back(r->GetCameraRMatrix());
+		motions.push_back(r->GetCameraT());
+	}
+
+	save_structure("structure.yml", rotations, motions, 
+		m_result.GetAllResult(), 
+		m_result.GetAllColor());
+
 }
 void SImgPointMapping::Reset(int feaPoNum)
 {
