@@ -52,11 +52,10 @@ int SfmResult::Query3dPointIdx(int imgIdx, int feaPointIdx)
 }
 
 void SfmResult::Add3DPoint(int img0idx,int img1idx, 
-	const cv::DMatch& ma,const cv::Vec4f& pos, 
+	const cv::DMatch& ma,const cv::Point3f& pos, 
 	const cv::Vec3b& col)
 {
-	m_finaly_result.push_back(cv::Point3f(
-		pos[0],	pos[1],	pos[2]));
+	m_finaly_result.push_back(pos);
 	m_finaly_col_result.push_back(col);
 	size_t lastidx = m_finaly_result.size()-1;
 	m_fusion_booking.at(img0idx).SetIdxMapping(ma.queryIdx, lastidx);
@@ -104,13 +103,20 @@ void MvSfmContex::InitResult()
 //這裡的特殊之處在 只有第一次重建具有mask
 void MvSfmContex::FusionResult1st()
 {
-	auto& cvmatches = GetMatchData(0, 1)->GetDMData();
+	auto mr = GetMatchData(0, 1);
+	auto& cols=mr->GetColorData(0);
+	auto& cvmatches = mr->GetDMData();
 	for (size_t i = 0,idx=0; i < cvmatches.size();++i)
 	{
 		if (m_emr.mask.at<uchar>(i) == 0)
 			continue;
 		m_result.RegResultIdx(0, cvmatches[i].queryIdx, idx);
 		m_result.RegResultIdx(1, cvmatches[i].trainIdx, idx);
+		m_result.Add3DPoint(0, 1, 
+			cvmatches[i], 
+			m_Recipes.at(0)->GetReconStructRes(idx), 
+			cols.at(i));
+
 		++idx;
 	}
 
@@ -122,7 +128,6 @@ void MvSfmContex::FusionResult(int img0_idx, int img1_idx, reconRecipe* pri)
 	auto mr = pri->GetMatchData();
 	auto& cols=mr->GetColorData(0);
 	auto& cvmd= mr->GetDMData();
-	cv::Mat& res3d=pri->GetReconStructRes();
 	//SImgPointMapping& img1_mapping = m_result.GetFeaPointMap(img1_idx);
 	int i = 0;
 	for (auto& m:cvmd)
@@ -133,7 +138,10 @@ void MvSfmContex::FusionResult(int img0_idx, int img1_idx, reconRecipe* pri)
 			m_result.RegResultIdx(img1_idx, i, residx); //如果这个点已经存在了，把idx复制过来
 		else
 		{
-			m_result.Add3DPoint(img0_idx, img1_idx,m,res3d.at<Vec4f>(i), cols.at(i));
+			m_result.Add3DPoint(img0_idx, img1_idx,
+				m,
+				pri->GetReconStructRes(i),
+				cols.at(i));
 		}
 		++i;
 	}
@@ -200,7 +208,7 @@ void MvSfmContex::EndAddImage()
 	}
 
 	//init m_Recipes
-	m_Recipes.swap(vector<reconRecipe*>(imageCount)); 
+	m_Recipes.swap(vector<reconRecipe*>(imageCount-1)); 
 	std::fill(m_Recipes.begin(), m_Recipes.end(), nullptr);
 
 	//init m_pnpQueryDatas
@@ -269,14 +277,13 @@ pnpQueryData* MvSfmContex::Query3d2dIntersection(int img0_idx, int img1_idx)
 {
 	pnpQueryData* pnp = m_pnpQueryDatas.at(img0_idx - 1);
 	auto& img1Kp=GetImageByIdx(img1_idx)->key_points;
-	auto& cvmatches = GetMatchData(0, 1)->GetDMData();
+	auto& cvmatches = GetMatchData(img0_idx, img1_idx)->GetDMData();
 	for (size_t i = 0, idx = 0; i < cvmatches.size(); ++i)
 	{
 		const DMatch& m = cvmatches.at(i);
-		int _3didx=m_result.Query3dPointIdx(img0_idx, m.queryIdx);
-		if(_3didx<0)
-			continue;
-		pnp->AddPoint(m_result.Get3dPoint(_3didx), img1Kp[m.trainIdx].pt);
+		int _3didx= m_result.Query3dPointIdx(img0_idx, m.queryIdx);
+		if(_3didx >=0)
+			pnp->AddPoint(m_result.Get3dPoint(_3didx), img1Kp[m.trainIdx].pt);
 	}
 	return pnp;
 }
@@ -380,6 +387,7 @@ reconRecipe::reconRecipe(int imgidx0, int imgidx1, match_res* mr)
 	m_image_idx[0] = imgidx0;
 	m_image_idx[1] = imgidx1;
 	m_match_data = mr;
+	m_bCulled = false;
 }
 
 const std::vector<cv::Point2f>& reconRecipe::GetPosData(int leftright)
@@ -387,6 +395,22 @@ const std::vector<cv::Point2f>& reconRecipe::GetPosData(int leftright)
 	if (m_bCulled)
 		return m_passed_pos[leftright];
 	return m_match_data->GetPosData(leftright);
+}
+
+void reconRecipe::AddResconStructMat(const cv::Mat & res)
+{
+	//齐次坐标处理 ；其实这里可以不除 融合的时候通过了判断再除
+	for (int i = 0; i < res.cols;++i)
+	{
+		Mat_<float> col = res.col(i);
+		float f = 1.0f / col(3);
+		m_recons_res.push_back(Point3f(f*col(0), f*col(1), f*col(2)));
+	}
+}
+
+const cv::Point3f & reconRecipe::GetReconStructRes(int idx)
+{
+	return m_recons_res.at(idx);
 }
 
 

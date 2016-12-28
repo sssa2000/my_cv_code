@@ -50,7 +50,7 @@ public:
 
 	int RegResultIdx(int imgIdx, int feaPointIdx, int point3dIdx);
 	int Query3dPointIdx(int imgIdx, int feaPointIdx);
-	void Add3DPoint(int img0idx, int img1idx, const cv::DMatch& ma, const cv::Vec4f& pos,const cv::Vec3b& cols);
+	void Add3DPoint(int img0idx, int img1idx, const cv::DMatch& ma, const cv::Point3f& pos,const cv::Vec3b& cols);
 	const cv::Point3f& Get3dPoint(int idx);
 	const std::vector<cv::Point3f>& GetAllResult() { return m_finaly_result; }
 	const std::vector<cv::Vec3b>& GetAllColor() { return m_finaly_col_result; }
@@ -127,8 +127,9 @@ public:
 	const cv::Mat& GetCameraProjMatrix(int leftright);
 	void CalcCameraProjMatrix(const cv::Mat& fK);
 	const std::vector<cv::Point2f>& GetPosData(int leftright);
-	cv::Mat& GetReconStructRes() { return m_reconstruct_res; }
 	match_res* GetMatchData() { return m_match_data; }
+	void AddResconStructMat(const cv::Mat& mat);
+	const cv::Point3f& GetReconStructRes(int idx);
 protected:
 	int m_image_idx[2];
 	cv::Mat m_R;
@@ -138,8 +139,8 @@ protected:
 	bool m_bCulled; //是否经过了mask的剔除
 	std::vector<cv::Point2f> m_passed_pos[2];//匹配的点的位置（mask剔除之后）
 	std::vector<cv::Vec3b> m_passed_color[2];//匹配的点的颜色（mask剔除之后）
-	cv::Mat m_reconstruct_res;	// 重建的结果，4行N列的矩阵，每一列代表空间中的一个点
-
+	//cv::Mat m_reconstruct_res;	// 重建的结果，4行N列的矩阵，每一列代表空间中的一个点
+	std::vector<cv::Point3f> m_recons_res;
 
 };
 //保存在重建过程中的数据

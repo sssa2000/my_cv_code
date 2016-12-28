@@ -136,9 +136,10 @@ bool sloveE(MvSfmContex* contex,int image_idx0,int image_idx1)
 		f, pp, RANSAC, 0.999, 1.0, 
 		out.mask);
 
-	contex->SetEssMat(out);
 	//mask中 0表示异常的点 1表示正常的点
 	out.feasible_count = countNonZero(out.mask);
+	contex->SetEssMat(out);
+
 	//对于RANSAC而言，outlier数量大于50%时，结果是不可靠的
 	if (out.feasible_count <= 15 ||
 		((float)out.feasible_count / mr->GetPosData(0).size()) < 0.6f)
@@ -155,20 +156,16 @@ void tri_reconstruct(MvSfmContex* contex, reconRecipe* pr)
 
 	//三角重建
 	auto md = contex->GetMatchData(pr->GetImgIdx(0), pr->GetImgIdx(1));
-	cv::Mat& res = pr->GetReconStructRes();
-	cv::triangulatePoints(pr->GetCameraProjMatrix(0), 
+	cv::Mat res;
+	cv::triangulatePoints(
+		pr->GetCameraProjMatrix(0), 
 		pr->GetCameraProjMatrix(1),
 		pr->GetPosData(0),
-		md->GetPosData(1),
+		pr->GetPosData(1),
 		res);
-	//齐次坐标处理 ；其实这里可以不除 融合的时候通过了判断再除
-	for (int i = 0; i < res.cols; ++i)
-	{
-		cv::Vec4f& p = res.at<Vec4f>(0, i);//only one row
-		p[0] /= p[3];
-		p[1] /= p[3];
-		p[2] /= p[3];
-	}
+
+	pr->AddResconStructMat(res);
+
 }
 
 reconRecipe* reconstruct_other(int idx0, int idx1, MvSfmContex* contex)
@@ -210,11 +207,11 @@ reconRecipe* reconstruct_fs(MvSfmContex* contex)
 	int pass_count = cv::recoverPose(essMat.essMatrix,
 		mr->GetPosData(0), 
 		mr->GetPosData(1), 
-		essMat.cameraR,
-		essMat.cameraT,
+		R,
+		T,
 		contex->GetCameraFocal(), 
 		contex->GetCameraPrinP(), 
-		essMat.mask);
+		mask);
 	//位于两个相机前方的点的数量要足够大
 	if (((float)pass_count) / essMat.feasible_count < 0.7f)
 		return false;
@@ -241,7 +238,7 @@ TEST(sfm_mv, all_exec)
 	MvSfmContex contex;
 
 	//读取一个目录下的所有image
-	int img_num = read_analyse_images(&contex,"../media/mv_images/1");
+	int img_num = read_analyse_images(&contex,"../media/mv_images/");
 	contex.InitResult();
 
 	EXPECT_EQ(img_num, 3);
@@ -262,11 +259,12 @@ TEST(sfm_mv, all_exec)
 
 	//依次加入新的图片（idx+1） 把结果融合到重建结果中
 	//
-	for (int idx = 1; idx < img_num;++idx)
+	for (int idx = 1; idx < img_num - 1;++idx)
 	{
 		//根据之前求得的R，T进行三维重建
-		reconRecipe* pother=reconstruct_other(idx,idx+1,&contex);
-		contex.FusionResult(idx, idx + 1, pother);
+		int nextIdx = idx + 1;
+		reconRecipe* pother=reconstruct_other(idx, nextIdx,&contex);
+		contex.FusionResult(idx, nextIdx, pother);
 
 	}
 
